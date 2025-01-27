@@ -16,7 +16,7 @@ monitor_thread = None
 stop_monitoring = False
 
 BUCKET_NAME = 'pocrsibucket'
-HLS_FOLDER = 'hls'
+HLS_FOLDER = 'hls-test'
 
 s3_client = boto3.client('s3')
 
@@ -76,13 +76,17 @@ def stop_ffmpeg():
     global ffmpeg_process
 
     if ffmpeg_process:
+        # Attempt to stop the global ffmpeg_process
         try:
-            if ffmpeg_process.poll() is None:
+            if ffmpeg_process.poll() is None:  # Check if the process is running
                 print("Stopping global FFmpeg process...")
                 ffmpeg_process.terminate()
                 ffmpeg_process.wait(timeout=5)
                 print("Global FFmpeg process stopped successfully.")
-            ffmpeg_process = None
+                ffmpeg_process = None
+                return
+            else:
+                print("Global FFmpeg process already stopped.")
         except subprocess.TimeoutExpired:
             print("Global FFmpeg process did not terminate in time. Forcibly killing it...")
             os.kill(ffmpeg_process.pid, signal.SIGKILL)
@@ -90,8 +94,24 @@ def stop_ffmpeg():
         except Exception as e:
             print(f"Error stopping global FFmpeg process: {e}")
             ffmpeg_process = None
-    else:
-        print("No global FFmpeg process to stop.")
+
+    # If no global process is found or stopped, locate and stop system-wide FFmpeg processes
+    print("No global FFmpeg process found or already stopped. Searching system-wide...")
+    try:
+        for process in psutil.process_iter(attrs=['pid', 'name', 'cmdline']):
+            if "ffmpeg" in process.info['name'] or \
+               any("ffmpeg" in arg for arg in (process.info['cmdline'] or [])):
+                print(f"Found FFmpeg process (PID: {process.info['pid']}), terminating...")
+                os.kill(process.info['pid'], signal.SIGTERM)
+                psutil.Process(process.info['pid']).wait(timeout=5)
+                print(f"FFmpeg process (PID: {process.info['pid']}) terminated successfully.")
+    except psutil.NoSuchProcess:
+        print("FFmpeg process already terminated.")
+    except psutil.TimeoutExpired:
+        print("FFmpeg process did not terminate in time. Forcibly killing it...")
+        os.kill(process.info['pid'], signal.SIGKILL)
+    except Exception as e:
+        print(f"Error stopping FFmpeg process: {e}")
 
 
 def monitor_ffmpeg(event_file, date, output_videos):
