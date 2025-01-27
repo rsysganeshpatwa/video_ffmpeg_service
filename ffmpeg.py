@@ -71,12 +71,10 @@ def run_ffmpeg(event_file, date, output_videos):
     except Exception as e:
         print(f"Error in FFmpeg process: {e}")
 
-
 def stop_ffmpeg():
     global ffmpeg_process
 
     if ffmpeg_process:
-        # Attempt to stop the global ffmpeg_process
         try:
             if ffmpeg_process.poll() is None:  # Check if the process is running
                 print("Stopping global FFmpeg process...")
@@ -95,12 +93,18 @@ def stop_ffmpeg():
             print(f"Error stopping global FFmpeg process: {e}")
             ffmpeg_process = None
 
-    # If no global process is found or stopped, locate and stop system-wide FFmpeg processes
+    # Stop system-wide FFmpeg processes
     print("No global FFmpeg process found or already stopped. Searching system-wide...")
+    current_pid = os.getpid()  # Get the current process ID
     try:
         for process in psutil.process_iter(attrs=['pid', 'name', 'cmdline']):
-            if "ffmpeg" in process.info['name'] or \
-               any("ffmpeg" in arg for arg in (process.info['cmdline'] or [])):
+            if (
+                process.info['name'] == 'ffmpeg'
+                or any("ffmpeg" in arg for arg in (process.info['cmdline'] or []))
+            ):
+                if process.info['pid'] == current_pid:
+                    print(f"Skipping FFmpeg process related to this Python app (PID: {current_pid}).")
+                    continue
                 print(f"Found FFmpeg process (PID: {process.info['pid']}), terminating...")
                 os.kill(process.info['pid'], signal.SIGTERM)
                 psutil.Process(process.info['pid']).wait(timeout=5)
@@ -112,6 +116,7 @@ def stop_ffmpeg():
         os.kill(process.info['pid'], signal.SIGKILL)
     except Exception as e:
         print(f"Error stopping FFmpeg process: {e}")
+
 
 
 def monitor_ffmpeg(event_file, date, output_videos):
