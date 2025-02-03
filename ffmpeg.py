@@ -2,13 +2,17 @@ import os
 import subprocess
 import threading
 import time
-from datetime import datetime
 import psutil
 import signal
 from flask import Flask, request, jsonify
 import boto3
+import sys
 
 app = Flask(__name__)
+
+# Ensure logs are printed immediately
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 
 # Globals for process management
 ffmpeg_process = None
@@ -43,12 +47,11 @@ def clear_output_folder(TEMP_DIR):
     except Exception as e:
         print(f"Error clearing local folder {TEMP_DIR}: {e}")
 
-
-
 def run_ffmpeg(event_file, date, output_videos):
     global ffmpeg_process
     clear_output_folder(output_videos)
     clear_s3_folder()
+    stop_ffmpeg()
 
     ffmpeg_command = [
         '/usr/bin/ffmpeg', '-protocol_whitelist', 'file,crypto,data,https,tls,tcp', '-re', '-f', 'concat', '-safe', '0', '-i', event_file,
@@ -70,6 +73,7 @@ def run_ffmpeg(event_file, date, output_videos):
         ffmpeg_process.wait()  # Block until process ends
     except Exception as e:
         print(f"Error in FFmpeg process: {e}")
+
 
 def stop_ffmpeg():
     global ffmpeg_process
@@ -117,18 +121,6 @@ def stop_ffmpeg():
     except Exception as e:
         print(f"Error stopping FFmpeg process: {e}")
 
-
-
-def monitor_ffmpeg(event_file, date, output_videos):
-    global stop_monitoring
-
-    while not stop_monitoring:
-        if ffmpeg_process is None or ffmpeg_process.poll() is not None:
-            print("FFmpeg process not running. Restarting...")
-            run_ffmpeg(event_file, date, output_videos)
-        time.sleep(10)  # Check every 10 seconds
-
-
 @app.route('/ffmpeg/start', methods=['POST'])
 def start_ffmpeg_route():
     global monitor_thread, stop_monitoring
@@ -137,25 +129,23 @@ def start_ffmpeg_route():
     date = data.get('date')
     event_file = data.get('event_file')
     output_videos = data.get('output_video_dir')
-    stop_ffmpeg()  # Stop any existing process
+      # Stop any existing process
 
     if not date or not event_file:
         return jsonify({"error": "Missing 'date' or 'event_file' in request."}), 400
 
     stop_monitoring = False
-    monitor_thread = threading.Thread(target=monitor_ffmpeg, args=(event_file, date,output_videos), daemon=True)
+    monitor_thread = threading.Thread(target=run_ffmpeg, args=(event_file, date, output_videos), daemon=True)
     monitor_thread.start()
-    return jsonify({"message": "FFmpeg process started with monitoring."})
+    return jsonify({"message": "FFmpeg process started."})
 
 
-@app.route('/ffmpeg/stop', methods=['POST'])
 def stop_ffmpeg_route():
     global stop_monitoring
 
     stop_monitoring = True
     stop_ffmpeg()
-    return jsonify({"message": "FFmpeg process and monitoring stopped."})
-
+    print({"message": "FFmpeg process stopped."})
 
 if __name__ == "__main__":
     app.run(port=5001)
