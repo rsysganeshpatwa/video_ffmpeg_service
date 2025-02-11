@@ -55,10 +55,10 @@ def run_ffmpeg(event_file, date, output_videos):
 
     ffmpeg_command = [
         '/usr/bin/ffmpeg', '-protocol_whitelist', 'file,crypto,data,https,tls,tcp', '-re', '-f', 'concat', '-safe', '0', '-i', event_file,
-        '-filter_complex', '[0:v]split=1[v1]; [v1]scale=w=854:h=480[v1out]',
+        '-filter_complex', '[0:v]split=1[v1]; [v1]scale=w=640:h=360[v1out]',
         '-map', '[v1out]', '-c:v:0', 'libx264', '-b:v:0', '5000k', '-maxrate:v:0', '5350k',
         '-bufsize:v:0', '3500k', '-map', 'a:0', '-c:a', 'aac', '-b:a:0', '192k', '-ac', '2',
-        '-f', 'hls', '-hls_time', '6', 
+        '-f', 'hls', '-hls_time', '3', 
         '-hls_list_size', '20',
         '-hls_flags', 'delete_segments',
         '-hls_delete_threshold', '20',
